@@ -5,4 +5,3 @@ psycopg2-binary==2.9.5
 requests==2.28.2
 splitstream==1.2.6
 urllib3==1.26.14
-watchdog==2.1.7

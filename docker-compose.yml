@@ -8,8 +8,9 @@ services:
         context: .
         dockerfile: ./Dockerfile
       volumes:
-        - ./app:/code
-      entrypoint: watchmedo auto-restart --recursive --pattern="*.py" --directory="./" -- python app/main.py
+        - ./app:/app
+      restart: unless-stopped
+      entrypoint: python ./app/main.py
 
 networks:
   ergopad-net:
