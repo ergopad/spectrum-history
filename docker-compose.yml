@@ -14,4 +14,4 @@ services:
 
 networks:
   ergopad-net:
-    driver: bridge
+    external: true
