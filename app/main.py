@@ -99,7 +99,8 @@ def initDb():
     ALTER FUNCTION public.getohlcv(character varying, interval, timestamp with time zone, timestamp with time zone, boolean)
     OWNER TO {POSTGRES_USER};
 
-    CREATE OR REPLACE VIEW public.pool_tvl
+    CREATE MATERIALIZED VIEW IF NOT EXISTS public.pool_tvl_mat
+    TABLESPACE pg_default
     AS
     WITH cte AS (
             SELECT spectrum_boxes."poolId",
@@ -111,9 +112,10 @@ def initDb():
         max(cte.value) AS value,
         cte."tokenName"
     FROM cte
-    GROUP BY cte."poolId", cte."tokenName";
+    GROUP BY cte."poolId", cte."tokenName"
+    WITH DATA;
 
-    ALTER TABLE public.pool_tvl
+    ALTER TABLE IF EXISTS public.pool_tvl_mat
         OWNER TO {POSTGRES_USER};
     """
 
@@ -149,6 +151,7 @@ while True:
     res = requests.get(f'{EXPLORER_URL}/api/v1/boxes/byGlobalIndex/stream?minGix={latestOffset}&limit={limit}')
     if res.ok:
         boxFound = 0
+        spectrumBoxFound = False
         for rawBox in splitfile(BytesIO(res.content),format="json"):
             item = json.loads(rawBox)
             boxFound += 1
@@ -181,10 +184,16 @@ while True:
                     cursor = connection.cursor()
                     cursor.execute(insertQuery)
                     cursor.close()
+
+                    spectrumBoxFound = True
         if boxFound == limit:
             syncing = True
         else:
             syncing = False
+        if not syncing and spectrumBoxFound:
+            cursor = connection.cursor()
+            cursor.execute("REFRESH MATERIALIZED VIEW public.pool_tvl_mat WITH DATA;")
+            cursor.close()
         latestOffset += boxFound
         print(latestOffset)
     connection.commit()
