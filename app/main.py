@@ -62,7 +62,14 @@ def initDb():
         ROWS 1000
 
     AS $BODY$
-    with cte as (
+    with time_table as (
+        select to_timestamp(
+                floor(EXTRACT(epoch FROM dt) / EXTRACT(epoch FROM time_resolution))
+                * EXTRACT(epoch FROM time_resolution)) as dd from generate_series
+            ( from_time 
+            , to_time
+            , time_resolution) dt
+        ), cte as (
         SELECT 
             CAST("value" AS DOUBLE PRECISION)/1000000000 as "value", 
             LAG(CAST("value" AS DOUBLE PRECISION)/1000000000,1) OVER(ORDER BY "timestamp", "global_index") AS "previousValue", 
@@ -74,8 +81,8 @@ def initDb():
             "global_index"
         FROM public.spectrum_boxes
         where "poolId" = pool_id
-        and "timestamp" >= from_time
-        and "timestamp" < to_time
+        and "timestamp" >= (select min(dd) from time_table)
+        and "timestamp" <= (select max(dd) + time_resolution from time_table)
     ) ,
     cte2 as (select first_value(case when flipped then "previousValue"/"previousTokenAmount" else "previousTokenAmount"/"previousValue" end) over (partition by "time" order by "global_index") as "open", 
         max(case when flipped then greatest("value"/"tokenAmount","previousValue"/"previousTokenAmount") else greatest("tokenAmount"/"value","previousTokenAmount"/"previousValue") end) over (partition by "time") as "high", 
@@ -88,12 +95,11 @@ def initDb():
             ("tokenAmount" < "previousTokenAmount" and "value" > "previousValue"))
     )
     select max("open") , max("high"), max("low"), max("close"), max("volume"), floor(extract(epoch from ts.dd))
-    from (select dd from generate_series
-            ( from_time 
-            , to_time
-            , time_resolution) dd) as ts left join cte2 on ts.dd = cte2."time"
+    from time_table as ts left join cte2 on ts.dd = cte2."time"
     group by ts.dd
     order by ts.dd;
+
+
     $BODY$;
 
     ALTER FUNCTION public.getohlcv(character varying, interval, timestamp with time zone, timestamp with time zone, boolean)
