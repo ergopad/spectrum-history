@@ -62,14 +62,15 @@ def initDb():
         ROWS 1000
 
     AS $BODY$
+    
     with time_table as (
-        select to_timestamp(
+		select to_timestamp(
                 floor(EXTRACT(epoch FROM dt) / EXTRACT(epoch FROM time_resolution))
                 * EXTRACT(epoch FROM time_resolution)) as dd from generate_series
             ( from_time 
             , to_time
             , time_resolution) dt
-        ), cte as (
+		), cte as (
         SELECT 
             CAST("value" AS DOUBLE PRECISION)/1000000000 as "value", 
             LAG(CAST("value" AS DOUBLE PRECISION)/1000000000,1) OVER(ORDER BY "timestamp", "global_index") AS "previousValue", 
@@ -93,12 +94,29 @@ def initDb():
             from cte
     where (("tokenAmount" > "previousTokenAmount" and "value" < "previousValue") or
             ("tokenAmount" < "previousTokenAmount" and "value" > "previousValue"))
-    )
-    select max("open") , max("high"), max("low"), max("close"), max("volume"), floor(extract(epoch from ts.dd))
+    ),
+	cte3 as (
+    select 
+		max("open") as "open", 
+		max("high") as "high", 
+		max("low") as "low", 
+		max("close") as "close", 
+		max("volume") as "volume", 
+		floor(extract(epoch from ts.dd)) as "time"
     from time_table as ts left join cte2 on ts.dd = cte2."time"
-    group by ts.dd
-    order by ts.dd;
-
+    group by ts.dd)
+	select 
+		first_value("open") over (partition by value_partition order by "time"),
+		first_value("high") over (partition by value_partition order by "time"),
+		first_value("low") over (partition by value_partition order by "time"),
+		first_value("close") over (partition by value_partition order by "time"),
+		coalesce("volume",0),
+		"time" from (
+			select *, 
+			sum(case when "close" is null then 0 else 1 end) over (order by "time") as value_partition
+			from cte3
+		) as final_sub
+	order by "time";
 
     $BODY$;
 
