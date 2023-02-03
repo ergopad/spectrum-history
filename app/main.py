@@ -106,9 +106,9 @@ def initDb():
     from time_table as ts left join cte2 on ts.dd = cte2."time"
     group by ts.dd)
 	select 
-		first_value("open") over (partition by value_partition order by "time"),
-		first_value("high") over (partition by value_partition order by "time"),
-		first_value("low") over (partition by value_partition order by "time"),
+		coalesce("open", first_value("close") over (partition by value_partition order by "time")),
+		coalesce("high", first_value("close") over (partition by value_partition order by "time")),
+		coalesce("low", first_value("close") over (partition by value_partition order by "time")),
 		first_value("close") over (partition by value_partition order by "time"),
 		coalesce("volume",0),
 		"time" from (
